@@ -1,0 +1,28 @@
+# Maelstrom test results and logs
+*/store/
+store/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Maelstrom binaries and archives
+maelstrom.tar.bz2
+maelstrom/
+
+# Go binaries and build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go module cache
+go.sum.backup
