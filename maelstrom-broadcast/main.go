@@ -12,6 +12,7 @@ import (
 func main() {
 	n := maelstrom.NewNode()
 	messageStore := make([]int, 0)
+	// topology := make(map[string][]string)
 	// seenBroadcast := make([]int, 5)
 	// Map with string keys and string slice values
 
@@ -22,11 +23,11 @@ func main() {
 			return fmt.Errorf("error:  %s", err)
 		}
 		fmt.Fprintf(os.Stderr, "BROADCAST messageStore: %v\n", messageStore)
+
 		if val, ok := body["message"].(float64); ok {
 			messageStore = append(messageStore, int(val))
 		}
 		body["type"] = "broadcast_ok"
-		delete(body, "message")
 		return n.Reply(msg, body)
 
 		// if val, ok := body["message"].(int); ok {
@@ -83,11 +84,11 @@ func main() {
 		}
 		body["type"] = "topology_ok"
 
-		// topology, ok := body["topology"]
+		topology, ok := body["topology"]
 
-		//if !ok {
-		//	return fmt.Errorf("error: topology data is not in expected format %s", body["topology"])
-		//}
+		if !ok {
+			return fmt.Errorf("error: topology data is not in expected format %s", body["topology"])
+		}
 		delete(body, "topology")
 
 		return n.Reply(msg, body)
