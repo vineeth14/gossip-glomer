@@ -1,3 +1,6 @@
+// Use a set to track if message has been seen, if not 'gossip' message across topology.
+// You need a separate type 'gossip' as the server is expecting 'broadcast_ok' but you don't expect any respone when sending 'gossip'
+// so you put it in a separate handler
 package main
 
 import (
