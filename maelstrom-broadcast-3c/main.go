@@ -9,7 +9,7 @@ import (
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
 )
 
-func gossip(message int, messageStore map[int]struct{}, topology map[string][]string, n *maelstrom.Node, msgID int, retrySet map[int]retryMessage) {
+func gossip(message int, messageStore map[int]struct{}, topology map[string][]string, n *maelstrom.Node, retrySet map[string]retryMessage) {
 	// if message has not been seen
 	if _, ok := messageStore[message]; !ok {
 		// store
@@ -17,7 +17,8 @@ func gossip(message int, messageStore map[int]struct{}, topology map[string][]st
 
 		// forward to neighbors
 		for _, nei := range topology[n.ID()] {
-			retrySet[msgID] = retryMessage{
+			uniqueID := fmt.Sprintf("%s_%d_%s", n.ID(), message, nei)
+			retrySet[uniqueID] = retryMessage{
 				"gossip",
 				message,
 			}
@@ -25,11 +26,11 @@ func gossip(message int, messageStore map[int]struct{}, topology map[string][]st
 			// for _, ok := retrySet[msgID]; ok; {
 			// time.Sleep(time.Millisecond * 100)
 
-			// fmt.Fprintf(os.Stderr,"MSG_ID GOSSIPING %s %s", msgID,
 			n.Send(nei, map[string]any{
-				"type":    "gossip",
-				"message": message,
-				"msg_id":  msgID,
+				"type":      "gossip",
+				"message":   message,
+				"unique_id": uniqueID,
+				"src":       n.ID(),
 			})
 			// }
 			// }()
@@ -49,7 +50,7 @@ func main() {
 	// seenMessage := make(map[uniqueMsgID]struct{})
 	messageStore := make(map[int]struct{})
 	topology := make(map[string][]string)
-	retrySet := make(map[int]retryMessage)
+	retrySet := make(map[string]retryMessage)
 	n.Handle("broadcast", func(msg maelstrom.Message) error {
 		var body map[string]any
 
@@ -58,7 +59,7 @@ func main() {
 		}
 
 		message := int(body["message"].(float64))
-		defer gossip(message, messageStore, topology, n, int(body["msg_id"].(float64)), retrySet)
+		defer gossip(message, messageStore, topology, n, retrySet)
 
 		err := n.Reply(msg, map[string]any{
 			"type": "broadcast_ok",
@@ -71,6 +72,9 @@ func main() {
 		return nil
 	})
 
+	// We need to write a new struct for handling the msg from gossip to get "src"
+	// use n.Send to the src
+	// make a unique id for retry set in gossip function
 	n.Handle("gossip", func(msg maelstrom.Message) error {
 		var body map[string]any
 
@@ -78,13 +82,14 @@ func main() {
 			fmt.Fprintf(os.Stderr, "%s", err)
 		}
 		message := int(body["message"].(float64))
+		dest := body["src"].(string)
+		uniqueID := body["unique_id"].(string)
 
-		// its not receiving gossip ok
-		gossip(message, messageStore, topology, n, int(body["msg_id"].(float64)), retrySet)
+		gossip(message, messageStore, topology, n, retrySet)
 
-		return n.Reply(msg, map[string]any{
-			"type":   "gossip_ok",
-			"msg_id": int(body["msg_id"].(float64)),
+		return n.Send(dest, map[string]any{
+			"type":      "gossip_ok",
+			"unique_id": uniqueID,
 		})
 	})
 
@@ -95,8 +100,8 @@ func main() {
 			fmt.Fprintf(os.Stderr, "%s", err)
 		}
 
-		msgID := int(body["msg_id"].(float64))
-		delete(retrySet, msgID)
+		uniqueID := body["unique_id"].(string)
+		delete(retrySet, uniqueID)
 		return nil
 	})
 
