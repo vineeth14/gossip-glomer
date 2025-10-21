@@ -76,7 +76,6 @@ func gossip(message int, messageStore map[int]struct{}, topology map[string][]st
 func main() {
 	n := maelstrom.NewNode()
 
-	// seenMessage := make(map[uniqueMsgID]struct{})
 	messageStore := make(map[int]struct{})
 	topology := make(map[string][]string)
 	retrySet := &safeRetrySet{items: make(map[string]retryMessage)}
@@ -101,9 +100,6 @@ func main() {
 		return nil
 	})
 
-	// We need to write a new struct for handling the msg from gossip to get "src"
-	// use n.Send to the src
-	// make a unique id for retry set in gossip function
 	n.Handle("gossip", func(msg maelstrom.Message) error {
 		var body map[string]any
 
