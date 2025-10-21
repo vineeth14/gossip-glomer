@@ -5,11 +5,42 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
+	"time"
 
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
 )
 
-func gossip(message int, messageStore map[int]struct{}, topology map[string][]string, n *maelstrom.Node, retrySet map[string]retryMessage) {
+type retryMessage struct {
+	Type    string
+	message int
+}
+
+type safeRetrySet struct {
+	mu    sync.Mutex
+	items map[string]retryMessage
+}
+
+func (s *safeRetrySet) Add(id string, msg retryMessage) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.items[id] = msg
+}
+
+func (s *safeRetrySet) Exists(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, ok := s.items[id]
+	return ok
+}
+
+func (s *safeRetrySet) Remove(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.items, id)
+}
+
+func gossip(message int, messageStore map[int]struct{}, topology map[string][]string, n *maelstrom.Node, retrySet *safeRetrySet) {
 	// if message has not been seen
 	if _, ok := messageStore[message]; !ok {
 		// store
@@ -18,30 +49,28 @@ func gossip(message int, messageStore map[int]struct{}, topology map[string][]st
 		// forward to neighbors
 		for _, nei := range topology[n.ID()] {
 			uniqueID := fmt.Sprintf("%s_%d_%s", n.ID(), message, nei)
-			retrySet[uniqueID] = retryMessage{
+			retrySet.Add(uniqueID, retryMessage{
 				"gossip",
 				message,
-			}
-			// go func() {
-			// for _, ok := retrySet[msgID]; ok; {
-			// time.Sleep(time.Millisecond * 100)
-
-			n.Send(nei, map[string]any{
-				"type":      "gossip",
-				"message":   message,
-				"unique_id": uniqueID,
-				"src":       n.ID(),
 			})
-			// }
-			// }()
+			// pass variables to prevent closure bug
+			go func(neighbor string, id string, msg int) {
+				for {
+					if !retrySet.Exists(id) {
+						break
+					}
+					time.Sleep(time.Millisecond * 100)
+					n.Send(neighbor, map[string]any{
+						"type":      "gossip",
+						"message":   msg,
+						"unique_id": id,
+						"src":       n.ID(),
+					})
+				}
+			}(nei, uniqueID, message)
 		}
 
 	}
-}
-
-type retryMessage struct {
-	Type    string
-	message int
 }
 
 func main() {
@@ -50,7 +79,7 @@ func main() {
 	// seenMessage := make(map[uniqueMsgID]struct{})
 	messageStore := make(map[int]struct{})
 	topology := make(map[string][]string)
-	retrySet := make(map[string]retryMessage)
+	retrySet := &safeRetrySet{items: make(map[string]retryMessage)}
 	n.Handle("broadcast", func(msg maelstrom.Message) error {
 		var body map[string]any
 
@@ -101,7 +130,7 @@ func main() {
 		}
 
 		uniqueID := body["unique_id"].(string)
-		delete(retrySet, uniqueID)
+		retrySet.Remove(uniqueID)
 		return nil
 	})
 
